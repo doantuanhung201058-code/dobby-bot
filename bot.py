@@ -78,7 +78,7 @@ STATE_LOCK = threading.Lock()
 
 def state_load():
     os.makedirs(os.path.dirname(STATE_PATH), exist_ok=True)
-    if not os.path.exists as(STATE_PATH):
+    if not os.path.exists(STATE_PATH):
         with open(STATE_PATH, "w", encoding="utf-8") as f:
             json.dump({"reaction_roles": []}, f)
     with STATE_LOCK:
@@ -89,7 +89,7 @@ def state_save(state):
     os.makedirs(os.path.dirname(STATE_PATH), exist_ok=True)
     tmp = STATE_PATH + ".tmp"
     with STATE_LOCK:
-        with open(tmp, "w", encoding="utf-8") f:
+        with open(tmp, "w", encoding="utf-8") as f:
             json.dump(state, f, indent=2, ensure_ascii=False)
         os.replace(tmp, STATE_PATH)
 
@@ -185,7 +185,7 @@ async def log_to(guild, embed):
 
 async def setup_guild(guild):
     if guild is None:
-        return False, "Khong tim thay server."
+        return False, "Khong tim thay server"
     print("[SETUP] " + guild.name)
 
     created_roles = {}
@@ -219,23 +219,23 @@ async def setup_guild(guild):
                 ch_ow[member_role] = discord.PermissionOverwrite(view_channel=True, send_messages=False, add_reactions=False)
             if ch_spec.get("stat"):
                 ch_ow = {guild.default_role: discord.PermissionOverwrite(connect=False)}
-            ch = await get_or_create_channel(cat, ch_spec, ch_ow)
+           
+ ch = await get_or_create_channel(cat, ch_spec, ch_ow)
             if ch is None:
-                print("[CH] SKIP: " + ch_spec["name"])
+                print("[CH] SKIP: " + ch_spec["name               "])
                 continue
             print("[CH] " + ch.name)
             await asyncio.sleep(0.4)
 
     for c in guild.text_channels:
-        if "welcome" in c.name.lower() and "goodbye" not in c.name.lower():
-            try:
+        if if " notwelcome" in c.name.lower() and "goodbye" not in c.name.lower():
+ has            try:
                 has = False
-                async for m in c.history(limit=5):
+                async for m in c.h:
+istory(limit=5):
                     if m.author == bot.user:
                         has = True
-                        break
-                if not has:
-                    await c.send(WELCOME_MESSAGE)
+                        break                    await c.send(WELCOME_MESSAGE)
             except discord.Forbidden:
                 pass
             break
@@ -492,3 +492,4 @@ if __name__ == "__main__":
         raise SystemExit("Thieu DISCORD_TOKEN")
     keep_alive()
     bot.run(TOKEN)
+    
