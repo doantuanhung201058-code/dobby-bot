@@ -2,68 +2,101 @@ import os
 import json
 import asyncio
 import threading
+import re
+from http.server import HTTPServer, BaseHTTPRequestHandler
+
 import discord
 from discord.ext import commands
 from discord import app_commands
 from dotenv import load_dotenv
-from web import keep_alive
 
 load_dotenv()
 
 TOKEN = os.getenv("DISCORD_TOKEN")
-LOG_CHANNEL = os.getenv("LOG_CHANNEL", "mod-logs")
+GUILD_ID = os.getenv("GUILD_ID")
+PORT = int(os.getenv("PORT", 3000))
 
+# ===== HTTP SERVER (giữ Render Free không sleep) =====
+class HealthHandler(BaseHTTPRequestHandler):
+    def do_GET(self):
+        self.send_response(200)
+        self.send_header("Content-Type", "text/plain; charset=utf-8")
+        self.end_headers()
+        self.wfile.write(b"Bot is alive!")
+
+    def log_message(self, format, *args):
+        pass
+
+def run_http_server():
+    HTTPServer(("0.0.0.0", PORT), HealthHandler).serve_forever()
+    print(f"HTTP server port {PORT}")
+
+# ===== FONT FANCY =====
+def fancy(text: str) -> str:
+    mapping = {}
+    for i, c in enumerate("abcdefghijklmnopqrstuvwxyz"):
+        mapping[c] = chr(0x1D41A + i)
+    for i, c in enumerate("ABCDEFGHIJKLMNOPQRSTUVWXYZ"):
+        mapping[c] = chr(0x1D400 + i)
+    return "".join(mapping.get(ch, ch) for ch in text)
+
+def small_caps(text: str) -> str:
+    return re.sub(r"[a-z]", lambda m: chr(ord(m.group()) + 0x1D00), text)
+
+# ===== CẤU HÌNH ROLES =====
 ROLES = [
-    {"name": "Admin", "color": 0xE74C3C, "hoist": True, "mentionable": False, "admin": True},
-    {"name": "Moderator", "color": 0x3498DB, "hoist": True, "mentionable": True},
-    {"name": "Member", "color": 0x2ECC71, "hoist": False, "mentionable": True},
-    {"name": "Bot", "color": 0x9B59B6, "hoist": True, "mentionable": False},
+    {"name": "👑 Admin", "color": 0xE74C3C, "hoist": True, "mentionable": False, "admin": True},
+    {"name": "🛡️ Moderator", "color": 0x3498DB, "hoist": True, "mentionable": True},
+    {"name": "👤 Member", "color": 0x2ECC71, "hoist": False, "mentionable": True},
+    {"name": "🤖 Bot", "color": 0x9B59B6, "hoist": True, "mentionable": False},
 ]
 
+# ===== CẤU HÌNH CATEGORIES & CHANNELS =====
 CATEGORIES = [
-    {"name": "SERVER STATS", "channels": [
-        {"name": "All member", "type": "voice", "stat": "all"},
-        {"name": "Thanh vien", "type": "voice", "stat": "members"},
+    {"name": "📊 SERVER STATS", "channels": [
+        {"name": "👥 All member", "type": "voice", "stat": "all"},
+        {"name": "🧑 Thanh vien", "type": "voice", "stat": "members"},
     ]},
-    {"name": "Welcome", "channels": [
-        {"name": "welcome", "type": "text", "readonly": True},
-        {"name": "goodbye", "type": "text", "readonly": True},
-        {"name": "invite", "type": "text", "readonly": True},
-        {"name": "verify", "type": "text", "readonly": True},
+    {"name": "👋 WELCOME", "channels": [
+        {"name": "🎉-welcome", "type": "text", "readonly": True},
+        {"name": "💔-goodbye", "type": "text", "readonly": True},
+        {"name": "📨-invite", "type": "text", "readonly": True},
+        {"name": "✅-verify", "type": "text", "readonly": True},
     ]},
-    {"name": "CONG VAO", "channels": [
-        {"name": "rules", "type": "text", "readonly": True},
-        {"name": "huong-dan", "type": "text", "readonly": True},
-        {"name": "announcement", "type": "text", "readonly": True},
-        {"name": "minecraft-smp", "type": "text"},
-        {"name": "server-boost", "type": "text"},
-        {"name": "donate", "type": "text"},
-        {"name": "give-away", "type": "text"},
-        {"name": "get-role", "type": "text"},
+    {"name": "📢 CỔNG VÀO", "channels": [
+        {"name": "📜-rules", "type": "text", "readonly": True},
+        {"name": "📖-huong-dan", "type": "text", "readonly": True},
+        {"name": "📣-announcement", "type": "text", "readonly": True},
+        {"name": "⛏️-minecraft-smp", "type": "text"},
+        {"name": "🚀-server-boost", "type": "text"},
+        {"name": "💰-donate", "type": "text"},
+        {"name": "🎁-give-away", "type": "text"},
+        {"name": "🎭-get-role", "type": "text"},
     ]},
-    {"name": "CONG DONG", "channels": [
-        {"name": "general", "type": "text"},
-        {"name": "meme", "type": "text"},
-        {"name": "media", "type": "text"},
-        {"name": "music", "type": "text"},
-        {"name": "gaming", "type": "text"},
-        {"name": "study", "type": "text"},
-        {"name": "bot-commands", "type": "text"},
+    {"name": "💬 CỘNG ĐỒNG", "channels": [
+        {"name": "💬-general", "type": "text"},
+        {"name": "😂-meme", "type": "text"},
+        {"name": "🖼️-media", "type": "text"},
+        {"name": "🎵-music", "type": "text"},
+        {"name": "🎮-gaming", "type": "text"},
+        {"name": "📚-study", "type": "text"},
+        {"name": "🤖-bot-commands", "type": "text"},
     ]},
-    {"name": "VOICE", "channels": [
-        {"name": "General", "type": "voice"},
-        {"name": "Gaming", "type": "voice"},
-        {"name": "Music", "type": "voice"},
-        {"name": "AFK", "type": "voice"},
+    {"name": "🔊 VOICE", "channels": [
+        {"name": "🔊 General", "type": "voice"},
+        {"name": "🎮 Gaming", "type": "voice"},
+        {"name": "🎵 Music", "type": "voice"},
+        {"name": "💤 AFK", "type": "voice"},
     ]},
-    {"name": "STAFF", "staff_only": True, "channels": [
-        {"name": "staff-chat", "type": "text"},
-        {"name": "mod-logs", "type": "text"},
-        {"name": "report", "type": "text"},
-        {"name": "Staff Voice", "type": "voice"},
+    {"name": "🛠️ STAFF", "staff_only": True, "channels": [
+        {"name": "💼-staff-chat", "type": "text"},
+        {"name": "📋-mod-logs", "type": "text"},
+        {"name": "🚨-report", "type": "text"},
+        {"name": "🎙️ Staff Voice", "type": "voice"},
     ]},
 ]
 
+# ===== INTENTS =====
 intents = discord.Intents.default()
 intents.guilds = True
 intents.members = True
@@ -80,24 +113,18 @@ def state_load():
     if not os.path.isdir("data"):
         os.makedirs("data")
     if not os.path.exists(STATE_PATH):
-        f = open(STATE_PATH, "w", encoding="utf-8")
-        json.dump({"reaction_roles": []}, f)
-        f.close()
-    STATE_LOCK.acquire()
-    f = open(STATE_PATH, "r", encoding="utf-8")
-    data = json.load(f)
-    f.close()
-    STATE_LOCK.release()
-    return data
+        with open(STATE_PATH, "w", encoding="utf-8") as f:
+            json.dump({"reaction_roles": []}, f)
+    with STATE_LOCK:
+        with open(STATE_PATH, "r", encoding="utf-8") as f:
+            return json.load(f)
 
 def state_save(state):
     if not os.path.isdir("data"):
         os.makedirs("data")
-    STATE_LOCK.acquire()
-    f = open(STATE_PATH, "w", encoding="utf-8")
-    json.dump(state, f, indent=2)
-    f.close()
-    STATE_LOCK.release()
+    with STATE_LOCK:
+        with open(STATE_PATH, "w", encoding="utf-8") as f:
+            json.dump(state, f, indent=2)
 
 def rr_add(message_id, emoji, role_id):
     s = state_load()
@@ -114,11 +141,7 @@ def rr_find(message_id, emoji):
 def build_perms(spec):
     if spec.get("admin"):
         return discord.Permissions(administrator=True)
-    p = discord.Permissions.none()
-    perms = spec.get("perms", [])
-    for n in perms:
-        setattr(p, n, True)
-    return p
+    return discord.Permissions.none()
 
 def norm_name(name):
     return name.lower().replace(" ", "-")
@@ -135,7 +158,8 @@ async def find_or_make_role(guild, spec):
             mentionable=spec.get("mentionable", False),
             permissions=build_perms(spec),
         )
-    except:
+    except Exception as e:
+        print(f"[ROLE ERROR] {spec['name']}: {e}")
         return None
 
 async def find_or_make_cat(guild, name, overwrites):
@@ -144,7 +168,8 @@ async def find_or_make_cat(guild, name, overwrites):
         return old
     try:
         return await guild.create_category(name=name, overwrites=overwrites)
-    except:
+    except Exception as e:
+        print(f"[CAT ERROR] {name}: {e}")
         return None
 
 async def find_or_make_ch(category, spec, overwrites):
@@ -161,7 +186,8 @@ async def find_or_make_ch(category, spec, overwrites):
             if old:
                 return old
             return await category.create_voice_channel(name, overwrites=overwrites)
-    except:
+    except Exception as e:
+        print(f"[CH ERROR] {name}: {e}")
         return None
     return None
 
@@ -171,12 +197,11 @@ async def log_it(guild, embed):
         if "mod-logs" in c.name:
             ch = c
             break
-    if not ch:
-        return
-    try:
-        await ch.send(embed=embed)
-    except:
-        pass
+    if ch:
+        try:
+            await ch.send(embed=embed)
+        except:
+            pass
 
 async def do_setup(guild):
     if guild is None:
@@ -191,10 +216,8 @@ async def do_setup(guild):
             print("[ROLE] " + r.name)
         await asyncio.sleep(0.3)
 
-    m_role = role_map.get("Member")
-    s_role = role_map.get("Moderator")
-    if s_role is None:
-        s_role = role_map.get("Admin")
+    m_role = role_map.get("👤 Member")
+    s_role = role_map.get("🛡️ Moderator") or role_map.get("👑 Admin")
 
     for cat_spec in CATEGORIES:
         staff_only = cat_spec.get("staff_only", False)
@@ -216,9 +239,8 @@ async def do_setup(guild):
             if ch_spec.get("stat"):
                 ch_ow = {guild.default_role: discord.PermissionOverwrite(connect=False)}
             ch = await find_or_make_ch(cat, ch_spec, ch_ow)
-            if ch is None:
-                continue
-            print("[CH] " + ch.name)
+            if ch:
+                print("[CH] " + ch.name)
             await asyncio.sleep(0.4)
 
     print("[DONE] " + guild.name)
@@ -232,20 +254,16 @@ async def stats_task():
         try:
             for guild in bot.guilds:
                 total = guild.member_count
-                real = 0
-                for m in guild.members:
-                    if not m.bot:
-                        real = real + 1
-                pairs = [("All member", total), ("Thanh vien", real)]
-                for label, num in pairs:
+                real = sum(1 for m in guild.members if not m.bot)
+                for label, num in [("👥 All member", total), ("🧑 Thanh vien", real)]:
                     target = None
                     for c in guild.voice_channels:
-                        if label in c.name:
+                        if label in c.name or label.split()[1] in c.name:
                             target = c
                             break
                     if target is None:
                         continue
-                    newn = label + ": " + str(num)
+                    newn = f"{label}: {num}"
                     if target.name != newn:
                         try:
                             await target.edit(name=newn)
@@ -257,12 +275,20 @@ async def stats_task():
 
 @bot.event
 async def on_ready():
-    print("[READY] " + str(bot.user))
+    print(f"[READY] {bot.user}")
+
     try:
-        synced = await bot.tree.sync()
-        print("[SYNC] " + str(len(synced)))
+        if GUILD_ID:
+            guild = discord.Object(id=int(GUILD_ID))
+            bot.tree.copy_global_to(guild=guild)
+            synced = await bot.tree.sync(guild=guild)
+            print(f"[SYNC] {len(synced)} commands -> guild {GUILD_ID}")
+        else:
+            synced = await bot.tree.sync()
+            print(f"[SYNC] {len(synced)} commands global")
     except Exception as e:
-        print("[SYNC] " + str(e))
+        print(f"[SYNC ERROR] {e}")
+
     global STAT_ON
     if not STAT_ON:
         STAT_ON = True
@@ -276,19 +302,31 @@ async def on_member_join(member):
             ch = c
             break
     if ch:
-        txt = member.mention + " vua vao server " + member.guild.name
-        e = discord.Embed(title="Chao mung thanh vien moi", description=txt, color=0x2ECC71)
-        e.set_thumbnail(url=member.display_avatar.url)
+        embed = discord.Embed(
+            title=f"{fancy('Welcome')} 🎉",
+            description=(
+                f"{member.mention} vừa tham gia **{member.guild.name}**!\n\n"
+                f"> 👥 Thành viên thứ **{member.guild.member_count}**\n"
+                f"> 📜 Đọc nội quy ở kênh **rules**\n"
+                f"> 🎭 Chọn role ở kênh **get-role**"
+            ),
+            color=0x57F287,
+        )
+        embed.set_thumbnail(url=member.display_avatar.url)
+        embed.set_footer(text=f"ID: {member.id}")
+        embed.timestamp = discord.utils.utcnow()
         try:
-            await ch.send(embed=e)
+            await ch.send(embed=embed)
         except:
             pass
-    role = None
-    target_name = "Bot" if member.bot else "Member"
-    for r in member.guild.roles:
-        if r.name == target_name:
-            role = r
-            break
+
+    target_name = "🤖 Bot" if member.bot else "👤 Member"
+    role = discord.utils.get(member.guild.roles, name=target_name)
+    if role is None:
+        for r in member.guild.roles:
+            if target_name.split()[-1] in r.name:
+                role = r
+                break
     if role:
         try:
             await member.add_roles(role)
@@ -303,31 +341,31 @@ async def on_member_remove(member):
             ch = c
             break
     if ch:
-        txt = str(member) + " da roi server"
-        e = discord.Embed(title="Tam biet", description=txt, color=0xE74C3C)
-        e.set_thumbnail(url=member.display_avatar.url)
+        embed = discord.Embed(
+            title=f"{fancy('Goodbye')} 💔",
+            description=f"**{member.name}** đã rời khỏi server. Hẹn gặp lại!",
+            color=0xED4245,
+        )
+        embed.set_thumbnail(url=member.display_avatar.url)
+        embed.timestamp = discord.utils.utcnow()
         try:
-            await ch.send(embed=e)
+            await ch.send(embed=embed)
         except:
             pass
 
 @bot.event
 async def on_message_delete(message):
-    if message.author.bot:
+    if message.author.bot or not message.guild:
         return
-    if not message.guild:
-        return
-    e = discord.Embed(title="Tin nhan bi xoa", color=0xE74C3C)
-    e.add_field(name="Nguoi gui", value=str(message.author), inline=False)
-    e.add_field(name="Kenh", value=message.channel.mention, inline=False)
-    e.add_field(name="Noi dung", value=(message.content or "trong")[:1024], inline=False)
-    await log_it(message.guild, e)
+    embed = discord.Embed(title="🗑️ Tin nhắn bị xóa", color=0xE74C3C)
+    embed.add_field(name="👤 Người gửi", value=str(message.author), inline=False)
+    embed.add_field(name="📍 Kênh", value=message.channel.mention, inline=False)
+    embed.add_field(name="📝 Nội dung", value=(message.content or "trống")[:1024], inline=False)
+    await log_it(message.guild, embed)
 
 @bot.event
 async def on_raw_reaction_add(payload):
-    if bot.user is None:
-        return
-    if payload.user_id == bot.user.id:
+    if bot.user is None or payload.user_id == bot.user.id:
         return
     rr = rr_find(payload.message_id, str(payload.emoji))
     if not rr:
@@ -337,14 +375,11 @@ async def on_raw_reaction_add(payload):
         return
     role = guild.get_role(rr["role_id"])
     member = guild.get_member(payload.user_id)
-    if role is None:
-        return
-    if member is None:
-        return
-    try:
-        await member.add_roles(role)
-    except:
-        pass
+    if role and member:
+        try:
+            await member.add_roles(role)
+        except:
+            pass
 
 @bot.event
 async def on_raw_reaction_remove(payload):
@@ -356,100 +391,113 @@ async def on_raw_reaction_remove(payload):
         return
     role = guild.get_role(rr["role_id"])
     member = guild.get_member(payload.user_id)
-    if role is None:
-        return
-    if member is None:
-        return
-    try:
-        await member.remove_roles(role)
-    except:
-        pass
+    if role and member:
+        try:
+            await member.remove_roles(role)
+        except:
+            pass
 
-@bot.tree.command(name="setup", description="Setup server")
+# ===== SLASH COMMAND =====
+@bot.tree.command(name="setup", description="Thiết lập server tự động")
 @app_commands.default_permissions(administrator=True)
-async def slash_setup(interaction):
+async def slash_setup(interaction: discord.Interaction):
     await interaction.response.defer(thinking=True)
     ok, err = await do_setup(interaction.guild)
     if ok:
-        await interaction.followup.send("Setup xong")
+        embed = discord.Embed(
+            title=f"{fancy('Setup Complete')} ✨",
+            description=(
+                f"✅ Đã tạo xong cấu trúc server!\n\n"
+                f"> 📁 **Categories:** `{len(CATEGORIES)}`\n"
+                f"> 🎭 **Roles:** `{len(ROLES)}`"
+            ),
+            color=0x5865F2,
+        )
+        embed.set_footer(text="Powered by DobbySetup")
+        embed.timestamp = discord.utils.utcnow()
+        await interaction.followup.send(embed=embed)
     else:
-        await interaction.followup.send("Loi: " + str(err))
+        await interaction.followup.send(f"❌ Lỗi: `{err}`")
 
-@bot.hybrid_command(name="reactionrole", description="Tao reaction role")
+# ===== HYBRID COMMANDS =====
+@bot.hybrid_command(name="reactionrole", description="Tạo reaction role")
 @commands.has_permissions(administrator=True)
 async def cmd_rr(ctx, role: discord.Role, emoji: str):
-    e = discord.Embed(title="Chon role", description="React " + emoji + " de nhan " + role.mention, color=0x5865F2)
-    msg = await ctx.send(embed=e)
+    embed = discord.Embed(
+        title="🎭 Chọn Role",
+        description=f"React {emoji} để nhận {role.mention}",
+        color=0x5865F2,
+    )
+    msg = await ctx.send(embed=embed)
     try:
         await msg.add_reaction(emoji)
     except:
-        await ctx.reply("Emoji khong hop le")
+        await ctx.reply("❌ Emoji không hợp lệ")
         return
     rr_add(msg.id, emoji, role.id)
-    await ctx.reply("Da tao", mention_author=False)
+    await ctx.reply("✅ Đã tạo reaction role", mention_author=False)
 
-@bot.hybrid_command(name="kick", description="Kick")
+@bot.hybrid_command(name="kick", description="Kick thành viên")
 @commands.has_permissions(kick_members=True)
-async def cmd_kick(ctx, member: discord.Member, reason: str = "Khong co ly do"):
+async def cmd_kick(ctx, member: discord.Member, reason: str = "Không có lý do"):
     if member.top_role >= ctx.author.top_role:
-        await ctx.reply("Khong the kick")
+        await ctx.reply("❌ Không thể kick người này")
         return
     try:
         await member.kick(reason=reason)
-        await ctx.reply("Da kick " + str(member))
+        await ctx.reply(f"✅ Đã kick {member}")
     except:
-        await ctx.reply("Bot thieu quyen")
+        await ctx.reply("❌ Bot thiếu quyền")
 
-@bot.hybrid_command(name="ban", description="Ban")
+@bot.hybrid_command(name="ban", description="Ban thành viên")
 @commands.has_permissions(ban_members=True)
-async def cmd_ban(ctx, member: discord.Member, reason: str = "Khong co ly do"):
+async def cmd_ban(ctx, member: discord.Member, reason: str = "Không có lý do"):
     if member.top_role >= ctx.author.top_role:
-        await ctx.reply("Khong the ban")
+        await ctx.reply("❌ Không thể ban người này")
         return
     try:
         await member.ban(reason=reason)
-        await ctx.reply("Da ban " + str(member))
+        await ctx.reply(f"✅ Đã ban {member}")
     except:
-        await ctx.reply("Bot thieu quyen")
+        await ctx.reply("❌ Bot thiếu quyền")
 
-@bot.hybrid_command(name="mute", description="Timeout")
+@bot.hybrid_command(name="mute", description="Timeout thành viên")
 @commands.has_permissions(moderate_members=True)
 async def cmd_mute(ctx, member: discord.Member, minutes: int = 10):
+    from datetime import timedelta
     try:
-        from datetime import timedelta
         until = discord.utils.utcnow() + timedelta(minutes=minutes)
         await member.timeout(until)
-        await ctx.reply("Da mute " + str(member))
+        await ctx.reply(f"🔇 Đã mute {member} trong {minutes} phút")
     except:
-        await ctx.reply("Bot thieu quyen")
+        await ctx.reply("❌ Bot thiếu quyền")
 
-@bot.hybrid_command(name="unmute", description="Bo timeout")
+@bot.hybrid_command(name="unmute", description="Bỏ timeout")
 @commands.has_permissions(moderate_members=True)
 async def cmd_unmute(ctx, member: discord.Member):
     try:
         await member.timeout(None)
-        await ctx.reply("Da unmute")
+        await ctx.reply("🔊 Đã unmute")
     except:
-        await ctx.reply("Bot thieu quyen")
+        await ctx.reply("❌ Bot thiếu quyền")
 
-@bot.hybrid_command(name="warn", description="Canh cao")
+@bot.hybrid_command(name="warn", description="Cảnh cáo thành viên")
 @commands.has_permissions(moderate_members=True)
-async def cmd_warn(ctx, member: discord.Member, reason: str = "Khong co ly do"):
-    await ctx.send("Canh cao " + member.mention + " - " + reason)
+async def cmd_warn(ctx, member: discord.Member, reason: str = "Không có lý do"):
+    await ctx.send(f"⚠️ Cảnh cáo {member.mention} - {reason}")
 
-@bot.hybrid_command(name="clear", description="Xoa tin nhan")
+@bot.hybrid_command(name="clear", description="Xóa tin nhắn")
 @commands.has_permissions(manage_messages=True)
 async def cmd_clear(ctx, amount: int = 10):
-    if amount < 1:
-        return
-    if amount > 100:
+    if amount < 1 or amount > 100:
         return
     deleted = await ctx.channel.purge(limit=amount + 1)
-    await ctx.send("Da xoa " + str(len(deleted) - 1), delete_after=5)
+    await ctx.send(f"🗑️ Đã xóa {len(deleted) - 1} tin nhắn", delete_after=5)
 
+# ===== MAIN =====
 if __name__ == "__main__":
     if not TOKEN:
-        raise SystemExit("Thieu DISCORD_TOKEN")
-    keep_alive()
+        raise SystemExit("Thiếu DISCORD_TOKEN")
+    threading.Thread(target=run_http_server, daemon=True).start()
     bot.run(TOKEN)
-  
+    
